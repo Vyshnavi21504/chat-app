@@ -116,4 +116,6 @@ app.use("/api/messages", messageRouter);
 connectDB();
 
 // Export the app for Vercel
-export default app;
+if(process.env.NODE_ENV == "production"){
+  export default app;
+}
