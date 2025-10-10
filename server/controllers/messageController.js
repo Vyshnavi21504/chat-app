@@ -2,6 +2,7 @@ import Message from "../models/Message.js";
 import User from "../models/User.js";
 import cloudinary from "../lib/cloudinary.js";
 import { io, userSocketMap } from "../server.js";
+import axios from "axios";
 
 //get all users for the logged-in user's sidebar
 export const getUsersForSidebar = async (req, res) => {
@@ -31,10 +32,8 @@ export const getUsersForSidebar = async (req, res) => {
 // get all messages for a selected user
 export const getMessages = async (req, res) => {
     try {
-        
         const { id: selectedUserId } = req.params;
         const myId = req.user._id;
-
         const messages = await Message.find({
             $or: [
                 { senderId: myId, receiverId: selectedUserId },
@@ -45,10 +44,11 @@ export const getMessages = async (req, res) => {
         // Mark all incoming messages from the selected user as seen
         await Message.updateMany({ senderId: selectedUserId, receiverId: myId }, { seen: true });
         
+        // Ensure you send a response:
         res.json({ success: true, messages });
     } catch (error) {
-        console.log("Error in getMessages: ", error.message);
-        res.json({ success: false, message: error.message });
+        console.error("Error in getMessages:", error.message);
+        res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -69,35 +69,34 @@ export const markMessageAsSeen = async (req, res) => {
 // send message to selected user
 export const sendMessage = async (req, res) => {
     try {
-        // Corrected typo: 'req.boody' to 'req.body'
-        const { message } = req.body;
-        const receiverId = req.params.id;
-        const senderId = req.user._id;
+        console.log("Request body:", req.body);
+        console.log("Request params:", req.params);
+        console.log("User info:", req.user);
 
-        let imageUrl;
-        if (message.image) {
-            const uploadResponse = await cloudinary.uploader.upload(message.image);
-            imageUrl = uploadResponse.secure_url;
+        const { message } = req.body;
+        if (!message) {
+            return res.status(400).json({ success: false, message: "Message text is required" });
+        }
+        if (!req.user || !req.user._id) {
+            return res.status(401).json({ success: false, message: "Unauthorized" });
+        }
+        // Make sure req.params.id is correctly passed (it should be the selected user's id)
+        if (!req.params.id) {
+            return res.status(400).json({ success: false, message: "Receiver id is missing" });
         }
 
         const newMessage = await Message.create({
-            senderId,
-            receiverId,
-            message: {
-                text: message.text,
-                image: imageUrl,
-            },
+            senderId: req.user._id,
+            receiverId: req.params.id,
+            text: message,
+            createdAt: new Date(),
         });
+        res.json({ success: true, message: newMessage });
 
-        // emit the new message to the receiver
-        const receiverSocketId = userSocketMap[receiverId];
-        if (receiverSocketId) {
-            io.to(receiverSocketId).emit("newMessage", newMessage);
-        }
-
-        res.json({ success: true, newMessage });
+        // Also send the message to the server via axios
+        axios.post(`/api/messages/send/${req.params.id}`, { message });
     } catch (error) {
-        console.log("Error in sendMessage: ", error.message);
-        res.json({ success: false, message: error.message });
+        console.error("Full error sending message:", error);
+        res.status(500).json({ success: false, message: error.message });
     }
 };

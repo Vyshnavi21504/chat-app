@@ -1,10 +1,4 @@
-import React, {
-  useRef,
-  useEffect,
-  useContext,
-  useState,
-  useCallback,
-} from "react";
+import React, { useRef, useEffect, useContext, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 import { ChatContext } from "../../context/ChatContext";
 import { AuthContext } from "../../context/AuthContext";
@@ -33,10 +27,12 @@ const ChatContainer = () => {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [hasInitialized, setHasInitialized] = useState(false);
+  // Track the last fetched user ID to avoid repeated fetching for the same user
+  const [lastFetchedUserId, setLastFetchedUserId] = useState(null);
 
   const scrollToBottom = useCallback(() => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "auto" });
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, []);
 
@@ -57,7 +53,7 @@ const ChatContainer = () => {
 
     try {
       await sendMessage({ text: messageText });
-      // Don't manually scroll here, let the useEffect handle it
+      scrollToBottom();
     } catch (error) {
       toast.error("Failed to send message");
     }
@@ -75,7 +71,6 @@ const ChatContainer = () => {
       try {
         await sendMessage({ image: reader.result });
         e.target.value = "";
-        // Don't manually scroll here, let the useEffect handle it
       } catch (error) {
         toast.error("Failed to send image");
       }
@@ -118,29 +113,28 @@ const ChatContainer = () => {
     clearTimeout(longPressTimer);
   };
 
-  // Load messages when user is selected
+  // Fetch messages when a new user is selected (only one useEffect for fetching)
   useEffect(() => {
-    if (selectedUser && selectedUser._id) {
+    if (selectedUser?._id && selectedUser._id !== lastFetchedUserId) {
+      setLastFetchedUserId(selectedUser._id);
       setIsLoadingMessages(true);
-      setHasInitialized(false);
-      
+      console.log("Fetching messages for:", selectedUser._id);
       getMessages(selectedUser._id)
         .then(() => {
-          setIsLoadingMessages(false);
           setHasInitialized(true);
-          // Single scroll after everything is loaded
-          setTimeout(() => {
-            scrollToBottom();
-          }, 50);
+          scrollToBottom();
         })
-        .catch(() => {
+        .catch((error) => {
+          console.error("Error fetching messages:", error);
+          toast.error("Error fetching messages");
+        })
+        .finally(() => {
           setIsLoadingMessages(false);
-          setHasInitialized(true);
         });
     }
-  }, [selectedUser?._id, getMessages, scrollToBottom]);
+  }, [selectedUser?._id, lastFetchedUserId, scrollToBottom]);
 
-  // Only scroll on new messages after initial load is complete
+  // Auto-scroll on new messages (after initial load)
   useEffect(() => {
     if (hasInitialized && !isLoadingMessages && messages.length > 0) {
       const timer = setTimeout(() => {
@@ -165,7 +159,7 @@ const ChatContainer = () => {
   if (isLoadingMessages || !hasInitialized) {
     return (
       <div className="flex flex-col h-full bg-slate-900">
-        {/* Header - show immediately */}
+        {/* Header */}
         <div className="flex items-center gap-3 py-3 px-4 border-b border-stone-500 bg-gray-900/80">
           <img
             src={selectedUser.profilePic || assets.avatar_icon}
@@ -184,11 +178,7 @@ const ChatContainer = () => {
             alt=""
             className="md:hidden max-w-7 cursor-pointer"
           />
-          <img
-            src={assets.help_icon}
-            alt=""
-            className="hidden md:block max-w-5"
-          />
+          <img src={assets.help_icon} alt="" className="hidden md:block max-w-5" />
         </div>
         
         {/* Loading messages area */}
@@ -196,7 +186,7 @@ const ChatContainer = () => {
           <div className="animate-pulse text-gray-400">Loading messages...</div>
         </div>
         
-        {/* Input box - show immediately */}
+        {/* Input box */}
         <div className="p-3 border-t border-gray-600 bg-gray-900/80">
           <form onSubmit={handleSendMessage} className="flex items-center gap-3">
             <div className="flex-1 flex items-center bg-gray-700 px-3 rounded-full">
@@ -258,11 +248,7 @@ const ChatContainer = () => {
           alt=""
           className="md:hidden max-w-7 cursor-pointer"
         />
-        <img
-          src={assets.help_icon}
-          alt=""
-          className="hidden md:block max-w-5"
-        />
+        <img src={assets.help_icon} alt="" className="hidden md:block max-w-5" />
       </div>
 
       {/* Messages Container */}
@@ -273,7 +259,8 @@ const ChatContainer = () => {
       >
         {messages.length > 0 ? (
           messages.map((msg, index) => {
-            const isSender = msg.senderId === authUser._id || msg.sender === authUser._id;
+            const isSender =
+              msg.senderId === authUser._id || msg.sender === authUser._id;
             const isDeleted = msg.deleted;
             
             return (
@@ -295,7 +282,6 @@ const ChatContainer = () => {
                   />
                 )}
 
-                {/* Message Content */}
                 {isDeleted ? (
                   <div className="italic text-xs text-gray-400 bg-gray-800/70 rounded px-3 py-2 select-none">
                     This message was deleted
@@ -309,12 +295,10 @@ const ChatContainer = () => {
                           : "bg-gray-700 text-gray-200 rounded-bl-none"
                       }`}
                     >
-                      {/* Text Message */}
                       {(msg.message?.text || msg.text) && (
                         <p>{msg.message?.text || msg.text}</p>
                       )}
                       
-                      {/* Image Message */}
                       {(msg.image || msg.message?.image) && (
                         <img
                           src={msg.image || msg.message?.image}
@@ -323,20 +307,17 @@ const ChatContainer = () => {
                         />
                       )}
                       
-                      {/* Timestamp */}
                       <span className="block text-xs text-right mt-1 opacity-70">
                         {formatMessageTime(msg.createdAt)}
                       </span>
                     </div>
 
-                    {/* Seen status for sender */}
                     {isSender && (
                       <span className="text-[10px] text-gray-400 mt-1 self-end">
                         {msg.seen ? "Seen" : ""}
                       </span>
                     )}
 
-                    {/* Delete button for sender */}
                     {isSender && !isDeleted && (
                       <button
                         className="absolute top-1 right-1 p-1 text-gray-400 hover:text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -352,7 +333,6 @@ const ChatContainer = () => {
                       </button>
                     )}
 
-                    {/* Dropdown menu */}
                     {showDropdown === msg._id && (
                       <div className="absolute top-6 right-0 w-20 bg-gray-800 border border-gray-700 rounded shadow-lg z-10">
                         <button
@@ -369,7 +349,7 @@ const ChatContainer = () => {
                 {isSender && (
                   <img
                     src={authUser?.profilePic || assets.avatar_icon}
-                    alt=""
+                    alt="profile"
                     className="w-8 h-8 rounded-full"
                   />
                 )}
@@ -384,8 +364,6 @@ const ChatContainer = () => {
           </div>
         )}
         <div ref={messagesEndRef} />
-
-        {/* Scroll to bottom button */}
         {showScrollButton && (
           <button
             onClick={scrollToBottom}

@@ -29,15 +29,21 @@ export const ChatProvider = ({ children }) => {
     const getMessages = async (userId) => {
         if (!userId) {
             console.error("User ID is required to fetch messages.");
-            return;
+            return Promise.reject("User ID not provided.");
         }
         try {
             const { data } = await axios.get(`/api/messages/${userId}`);
             if (data.success) {
                 setMessages(data.messages);
+                return data.messages;
+            } else {
+                toast.error(data.message || "Failed to fetch messages");
+                return Promise.reject(data.message);
             }
         } catch (error) {
+            console.error("Error fetching messages:", error);
             toast.error(error.message);
+            return Promise.reject(error);
         }
     };
 
