@@ -12,6 +12,10 @@ A core principle of this application is **security**, featuring **end-to-end enc
 
 
 
+https://github.com/user-attachments/assets/631bd6a0-1f2b-4824-9cf1-c83c0738cc0a
+
+
+
 ---
 
 ## ✨ Features
